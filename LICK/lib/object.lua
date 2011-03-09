@@ -22,92 +22,167 @@ function Object:update(dt)
 	-- print("updated")
 end
 
+
 --[[
-	SCOBJECT
+	SCSERVER
 --]]
 
--- @SCObject: bass class for supercollider communication
-SCObject = Class(function(self)
-	Object.construct(self)
+SCServer = Class(function(self)
+                    SCObject.construct(self)
+                    SCServer.nodeID = 1000
+                 end)
+SCServer:inherit(SCObject)
+
+function SCServer:getNodeID()
+   self.nodeID = (self.nodeID + 1) % 67108863
+   return self.nodeID
+end
+
+function SCServer:send(var)
+   osc.client:send(var)
+end
+
+function SCServer:freeAll()
+   self:send{'/g_freeAll', 'i', 0}
+   self:send{'/clearSched'}
+end
+
+function SCServer:loadSynthDef(path)
+   self.send{'/d_load', 's', path}
+end
+
+
+
+--[[
+	SCNODE
+--]]
+
+SCNode = Class(
+   function(self, nodeid, addAction, addTargetID)
+      SCObject.construct(self)
+      self.server = server
+      self.nodeid = nodeid or self.server:getNodeID()
+      self.addAction = addAction or 1
+      self.addTargetID = addTargetID or 0
+   end)
+SCNode:inherit(SCObject)
+
+
+-- #set a control
+function SCNode:set(settings)
+   local var = {
+      --"#bundle",
+      --os.time(),
+      --{
+      "/n_set",
+      "i",
+      self.nodeid
+      --}
+   }
+   for param, value in pairs(settings) do
+      for p,i in ipairs{'s', param, 'f', value} do
+         table.insert(var, i)
+      end
+   end
+   self.server:send(var)
+   --print("OUTGOING OSC MESSAGE")
+end
+
+--#frees the node on the supercollider server
+function SCNode:free()
+   local var = {
+      "#bundle",
+      os.time()+0.8,
+      {
+         "/n_free",
+         "i",
+         self.nodeid,
+         "i",
+         0,
+      }
+   }
+   self.server:send(var)
+   --print("OUTGOING OSC MESSAGE")
+end
+
+--[[
+	SCGROUP
+--]]
+
+-- @SCGroup: supercollider synth group class
+SCGroup = Class(function(self, addAction, addTargetID)
+	SCNode.construct(self, nodeid, addAction, addTargetID)
+	local var = {
+       --"#bundle",
+       --os.time(),
+       --{
+       "/g_new",
+       "i",
+       self.nodeid,
+       "i",
+       self.addAction,
+       "i",
+       self.addTargetID,
+       --}
+	}
+	self.server:send(var)
 end)
-SCObject:inherit(Object)
+SCGroup:inherit(SCNode)
+
+function SCGroup:freeAll()
+   self.server:send{"/g_freeAll",
+                    "i",
+                    self.nodeid}
+end
 
 
 --[[
 	SCSYNTH
 --]]
+
+
 -- @SCSynth: supercollider synthesizer class
-SCSynth = Class(function(self, nodename, freq)
-	SCObject.construct(self)
+SCSynth = Class(function(self, nodename, freq, settings, addAction, addTargetID)
+	SCNode.construct(self, nodeid, addAction, addTargetID)
 	self.nodename = nodename or "default"
 	self.freq = freq or 440
-	self.nodeid = 1000 + math.random(1000)
+    self.settings = settings
 end)
-SCSynth:inherit(SCObject)
+SCSynth:inherit(SCNode)
 
--- #set a control, TODO: variable lenght of argument-pairs
-function SCSynth:set(control, val)
-	local var = {
-		"#bundle",
-		os.time(),
-		{
-	            "/n_set",
-		    "i",
-		    self.nodeid,
-		    "s",
-		    control,
-		    "f",
-		    val
-		}
-	}
-
-	osc.client:send(var)
-	--print("OUTGOING OSC MESSAGE")
-end
 
 --#sends an OSC message to the supercollider to start the synth
 function SCSynth:play()
 	local var = {
-		"#bundle",
-		os.time(),
-		{
+		--"#bundle",
+		--os.time(),
+		--{
 	            "/s_new",
 		    "s",
 		    self.nodename,
 		    "i",
 		    self.nodeid,
 		    "i",
-		    0,
+		    self.addAction,
 		    "i",
-		    0,
+		    self.addTargetID,
 		    "s",
 		    "freq",
 		    "f",
 		    self.freq
-		}
+		--}
 	}
-
-	osc.client:send(var)
+    if self.settings then
+       for param, value in pairs(self.settings) do
+          for p,i in ipairs{'s', param, 'f', value} do
+             table.insert(var, i)
+          end
+       end
+    end
+	self.server:send(var)
 	--print("OUTGOING OSC MESSAGE")
 end
 
---#frees the node on the supercollider server
-function SCSynth:free()
-	local var = {
-		"#bundle",
-		os.time()+0.8,
-		{
-	            "/n_free",
-		    "i",
-		    self.nodeid,
-		    "i",
-		    0,
-		}
-	}
-
-	osc.client:send(var)
-	--print("OUTGOING OSC MESSAGE")
-end
 
 --[[
 	DRAWABLE
