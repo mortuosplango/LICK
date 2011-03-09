@@ -22,6 +22,16 @@ function Object:update(dt)
 	-- print("updated")
 end
 
+--[[
+	SCOBJECT
+--]]
+
+-- @SCObject: bass class for supercollider communication
+SCObject = Class(function(self)
+	Object.construct(self)
+end)
+SCObject:inherit(Object)
+
 
 --[[
 	SCSERVER
